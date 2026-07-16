@@ -1,6 +1,78 @@
 workflows:
-  pocketlog-android:
-    name: PocketLog Android Build
+  pocketlog-release:
+    name: PocketLog Play Store Release (AAB)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      android_signing:
+        - pocketlog
+      flutter: stable
+    scripts:
+      - name: Create Android platform files
+        script: |
+          flutter create . --org com.musastudio --project-name pocketlog --platforms android
+      - name: Set app display name
+        script: |
+          sed -i '' 's/android:label="pocketlog"/android:label="PocketLog"/' android/app/src/main/AndroidManifest.xml
+      - name: Configure release signing
+        script: |
+          python3 <<'EOF'
+          import os
+
+          path = None
+          for cand in ['android/app/build.gradle.kts', 'android/app/build.gradle']:
+              if os.path.exists(cand):
+                  path = cand
+                  break
+          if path is None:
+              raise SystemExit('build.gradle not found!')
+
+          src = open(path).read()
+
+          if path.endswith('.kts'):
+              signing_block = (
+                  '    signingConfigs {\n'
+                  '        create("release") {\n'
+                  '            keyAlias = System.getenv("CM_KEY_ALIAS")\n'
+                  '            keyPassword = System.getenv("CM_KEY_PASSWORD")\n'
+                  '            storeFile = file(System.getenv("CM_KEYSTORE_PATH"))\n'
+                  '            storePassword = System.getenv("CM_KEYSTORE_PASSWORD")\n'
+                  '        }\n'
+                  '    }\n'
+              )
+              src = src.replace('    buildTypes {', signing_block + '    buildTypes {', 1)
+              src = src.replace('signingConfigs.getByName("debug")',
+                                'signingConfigs.getByName("release")')
+          else:
+              signing_block = (
+                  '    signingConfigs {\n'
+                  '        release {\n'
+                  '            keyAlias System.getenv("CM_KEY_ALIAS")\n'
+                  '            keyPassword System.getenv("CM_KEY_PASSWORD")\n'
+                  '            storeFile file(System.getenv("CM_KEYSTORE_PATH"))\n'
+                  '            storePassword System.getenv("CM_KEYSTORE_PASSWORD")\n'
+                  '        }\n'
+                  '    }\n'
+              )
+              src = src.replace('    buildTypes {', signing_block + '    buildTypes {', 1)
+              src = src.replace('signingConfig signingConfigs.debug',
+                                'signingConfig signingConfigs.release')
+
+          open(path, 'w').write(src)
+          print('Signing configured in ' + path)
+          EOF
+      - name: Get packages
+        script: |
+          flutter pub get
+      - name: Build signed release AAB
+        script: |
+          flutter build appbundle --release
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/mapping.txt
+
+  pocketlog-test-apk:
+    name: PocketLog Test APK (phone testing)
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
@@ -9,10 +81,13 @@ workflows:
       - name: Create Android platform files
         script: |
           flutter create . --org com.musastudio --project-name pocketlog --platforms android
+      - name: Set app display name
+        script: |
+          sed -i '' 's/android:label="pocketlog"/android:label="PocketLog"/' android/app/src/main/AndroidManifest.xml
       - name: Get packages
         script: |
           flutter pub get
-      - name: Build release APK
+      - name: Build test APK
         script: |
           flutter build apk --release
     artifacts:
