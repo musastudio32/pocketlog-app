@@ -14,11 +14,14 @@ workflows:
       - name: Set app display name
         script: |
           sed -i '' 's/android:label="pocketlog"/android:label="PocketLog"/' android/app/src/main/AndroidManifest.xml
+      - name: Generate launcher icons
+        script: |
+          flutter pub get
+          dart run flutter_launcher_icons
       - name: Configure release signing
         script: |
           python3 <<'EOF'
           import os
-
           path = None
           for cand in ['android/app/build.gradle.kts', 'android/app/build.gradle']:
               if os.path.exists(cand):
@@ -26,9 +29,7 @@ workflows:
                   break
           if path is None:
               raise SystemExit('build.gradle not found!')
-
           src = open(path).read()
-
           if path.endswith('.kts'):
               signing_block = (
                   '    signingConfigs {\n'
@@ -57,13 +58,9 @@ workflows:
               src = src.replace('    buildTypes {', signing_block + '    buildTypes {', 1)
               src = src.replace('signingConfig signingConfigs.debug',
                                 'signingConfig signingConfigs.release')
-
           open(path, 'w').write(src)
           print('Signing configured in ' + path)
           EOF
-      - name: Get packages
-        script: |
-          flutter pub get
       - name: Build signed release AAB
         script: |
           flutter build appbundle --release
@@ -84,9 +81,10 @@ workflows:
       - name: Set app display name
         script: |
           sed -i '' 's/android:label="pocketlog"/android:label="PocketLog"/' android/app/src/main/AndroidManifest.xml
-      - name: Get packages
+      - name: Generate launcher icons
         script: |
           flutter pub get
+          dart run flutter_launcher_icons
       - name: Build test APK
         script: |
           flutter build apk --release
